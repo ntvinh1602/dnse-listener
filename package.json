@@ -1,0 +1,16 @@
+{
+  "name": "dnse-listener",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "check": "node --check src/index.js && node --check src/log.js && node --check src/order-sink.js && node --check src/m1-ohlc-sink.js && node --check src/subscriptions.js && node --check src/symbols.js && node --check src/telegram.js && node --check src/ws.js"
+  },
+  "dependencies": {
+    "ws": "^8.21.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
