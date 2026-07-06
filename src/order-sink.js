@@ -1,3 +1,5 @@
+import { getOrderDetails } from "./dnse-api/trading-api.js"
+
 const MAX_UPSERT_ATTEMPTS = 3
 const RETRY_DELAYS_MS = [250, 750]
 const ORDER_NOTIFY_COOLDOWN_MS = 60 * 1000
@@ -11,24 +13,31 @@ function sleep(ms) {
 export function toOrderEventRow(message) {
   const o = message.order ?? message
   return {
-    id: Number(o.id),
+    id: o.id,
     side: o.side == "NB" ? "buy" : "sell",
-    account_no: String(o.accountNo ?? "").trim(),
-    symbol: String(o.symbol ?? "").trim().toUpperCase(),
-    order_type: String(o.orderType ?? "").trim(),
-    price: Number(o.price),
-    avg_price: Number(o.averagePrice),
-    quantity: Math.trunc(Number(o.quantity)),
-    fill_quantity: Math.trunc(Number(o.fillQuantity ?? 0)),
-    canceled_quantity: Math.trunc(Number(o.canceledQuantity ?? 0)),
-    leave_quantity: Math.trunc(Number(o.leaveQuantity ?? 0)),
-    order_status: String(o.orderStatus ?? "").trim(),
-    loan_package_id: o.loanPackageId != null ? Number(o.loanPackageId) : null,
+    account_no: o.accountNo,
+    symbol: o.symbol,
+    order_type: o.orderType,
+    price: o.price,
+    avg_price: o.averagePrice,
+    quantity: o.quantity,
+    fill_quantity: o.fillQuantity,
+    canceled_quantity: o.canceledQuantity,
+    leave_quantity: o.leaveQuantity,
+    order_status: o.orderStatus,
+    loan_package_id: o.loanPackageId,
     modified_date: o.modifiedDate,
+    tax: null,
+    fee: null,
   }
 }
 
-export function createOrderSink({ supabaseUrl, serviceRoleKey, logger, notify }) {
+export function createOrderSink({
+  supabaseUrl,
+  serviceRoleKey,
+  logger,
+  notify,
+}) {
   let lastNotifiedAt = 0
 
   async function upsertOrderEvent(message) {
@@ -48,6 +57,31 @@ export function createOrderSink({ supabaseUrl, serviceRoleKey, logger, notify })
         keys: Object.keys(message).join(","),
       })
       return false
+    }
+
+    if (row.order_status === "Filled") {
+      try {
+        const details = await getOrderDetails(row.account_no, row.id)
+        const fillQty = row.fill_quantity
+        const avgPrice = row.avg_price
+        row.tax = details.taxRate * fillQty * avgPrice
+        row.fee =
+          details.feeRate * fillQty * avgPrice +
+          (row.side === "sell" ? fillQty * 0.3 : 0)
+        logger.debug("order_sink.tax_fee_enriched", {
+          id: row.id,
+          symbol: row.symbol,
+          tax: row.tax,
+          fee: row.fee,
+        })
+      } catch (error) {
+        logger.warn("order_sink.tax_fee_fetch_failed", {
+          id: row.id,
+          symbol: row.symbol,
+          error_message:
+            error instanceof Error ? error.message : "Unknown error",
+        })
+      }
     }
 
     for (let attempt = 1; attempt <= MAX_UPSERT_ATTEMPTS; attempt += 1) {
@@ -86,7 +120,9 @@ export function createOrderSink({ supabaseUrl, serviceRoleKey, logger, notify })
           })
           if (Date.now() - lastNotifiedAt > ORDER_NOTIFY_COOLDOWN_MS) {
             lastNotifiedAt = Date.now()
-            void notify(`[DNSE] Order upsert failed — #${row.id} ${row.symbol} (${response.status})`)
+            void notify(
+              `[DNSE] Order upsert failed — #${row.id} ${row.symbol} (${response.status})`,
+            )
           }
           return false
         }
@@ -106,11 +142,15 @@ export function createOrderSink({ supabaseUrl, serviceRoleKey, logger, notify })
             symbol: row.symbol,
             error_name: error instanceof Error ? error.name : "Error",
             error_message:
-              error instanceof Error ? error.message : "Unknown order sink error",
+              error instanceof Error
+                ? error.message
+                : "Unknown order sink error",
           })
           if (Date.now() - lastNotifiedAt > ORDER_NOTIFY_COOLDOWN_MS) {
             lastNotifiedAt = Date.now()
-            void notify(`[DNSE] Order upsert failed — #${row.id} ${row.symbol} (${error instanceof Error ? error.message : "error"})`)
+            void notify(
+              `[DNSE] Order upsert failed — #${row.id} ${row.symbol} (${error instanceof Error ? error.message : "error"})`,
+            )
           }
           return false
         }
@@ -124,7 +164,9 @@ export function createOrderSink({ supabaseUrl, serviceRoleKey, logger, notify })
         })
       }
 
-      await sleep(RETRY_DELAYS_MS[attempt - 1] ?? RETRY_DELAYS_MS.at(-1) ?? 1000)
+      await sleep(
+        RETRY_DELAYS_MS[attempt - 1] ?? RETRY_DELAYS_MS.at(-1) ?? 1000,
+      )
     }
 
     return false
