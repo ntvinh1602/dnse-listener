@@ -94,6 +94,7 @@ export function createOrderSink({
               apikey: serviceRoleKey,
               Authorization: `Bearer ${serviceRoleKey}`,
               "Content-Type": "application/json",
+              "Content-Profile": "ods",
               Prefer: "return=minimal",
             },
             body: JSON.stringify(row),

@@ -61,6 +61,7 @@ export function createIntradaySink({ supabaseUrl, serviceRoleKey, logger, notify
               apikey: serviceRoleKey,
               Authorization: `Bearer ${serviceRoleKey}`,
               "Content-Type": "application/json",
+              "Content-Profile": "ods",
               Prefer: "resolution=merge-duplicates,return=minimal",
             },
             body: JSON.stringify(row),
