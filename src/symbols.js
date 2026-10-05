@@ -1,6 +1,6 @@
 function parseSymbols(payload) {
   if (!Array.isArray(payload)) {
-    throw new Error("active_stock_tickers RPC did not return an array")
+    throw new Error("dws.active_stock_tickers RPC did not return an array")
   }
 
   return [
@@ -27,6 +27,7 @@ export async function fetchActiveSymbols({
         apikey: serviceRoleKey,
         Authorization: `Bearer ${serviceRoleKey}`,
         "Content-Type": "application/json",
+        "Content-Profile": "dws",
       },
       body: "{}",
       signal,
@@ -35,7 +36,7 @@ export async function fetchActiveSymbols({
 
   if (!response.ok) {
     throw new Error(
-      `active_stock_tickers failed with ${response.status}: ${await response.text()}`,
+      `dws.active_stock_tickers failed with ${response.status}: ${await response.text()}`,
     )
   }
 
